@@ -1,0 +1,47 @@
+{
+  "name": "mcp-cncf-tech-advisor",
+  "version": "1.0.0",
+  "description": "MCP Server for CNCF Landscape Technology Data - Access 2,398+ CNCF projects, GitHub metrics, maturity status, and case studies",
+  "main": "./bin/index.js",
+  "bin": {
+    "mcp-cncf-tech-advisor": "bin/index.js"
+  },
+  "optionalDependencies": {
+    "mcp-cncf-tech-advisor-darwin-arm64": "1.0.0",
+    "mcp-cncf-tech-advisor-darwin-x64": "1.0.0",
+    "mcp-cncf-tech-advisor-linux-x64": "1.0.0",
+    "mcp-cncf-tech-advisor-windows-x64": "1.0.0"
+  },
+  "scripts": {
+    "start": "node bin/index.js",
+    "dev": "node bin/index.js --dev",
+    "clean": "mvn clean",
+    "docker:build": "docker build -t cncf-tech-advisor .",
+    "docker:run": "docker run -i --rm -p 8080:8080 cncf-tech-advisor",
+    "docker:push": "docker push ghcr.io/jeanlopezxyz/cncf-tech-advisor-mcp",
+    "release": "npm version patch && npm publish",
+    "test": "mvn test"
+  },
+  "keywords": [
+    "cncf",
+    "cloud-native",
+    "kubernetes",
+    "mcp",
+    "model-context-protocol",
+    "technology-advisor",
+    "devops",
+    "microservices",
+    "observability",
+    "service-mesh",
+    "recommendations",
+    "landscape",
+    "claude"
+  ],
+  "author": "Jean Lopez",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeanlopezxyz/cncf-tech-advisor-mcp"
+  },
+  "homepage": "https://github.com/jeanlopezxyz/cncf-tech-advisor-mcp#readme"
+}

@@ -1,0 +1,371 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+jobs:
+  # ===========================================
+  # Build and Test
+  # ===========================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          cache: 'maven'
+
+      - name: Run tests
+        run: ./mvnw verify
+
+  # ===========================================
+  # Build Native Binaries
+  # ===========================================
+  build-native:
+    name: Build Native (${{ matrix.os }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-14          # ARM64 (Apple Silicon)
+            artifact: mcp-cncf-tech-advisor-macos-arm64
+          - os: macos-15          # x64 (Intel)
+            artifact: mcp-cncf-tech-advisor-macos-x64
+          - os: ubuntu-latest
+            artifact: mcp-cncf-tech-advisor-linux-x64
+          - os: windows-latest
+            artifact: mcp-cncf-tech-advisor-windows-x64.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          cache: 'maven'
+
+      - name: Build native image
+        run: ./mvnw package -Pnative -DskipTests
+
+      - name: Rename binary (Unix)
+        if: runner.os != 'Windows'
+        run: mv target/*-runner target/${{ matrix.artifact }}
+
+      - name: Rename binary (Windows)
+        if: runner.os == 'Windows'
+        run: move target\*-runner.exe target\${{ matrix.artifact }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: target/${{ matrix.artifact }}
+
+  # ===========================================
+  # Create GitHub Release
+  # ===========================================
+  release:
+    name: Create Release
+    needs: build-native
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: '25'
+          distribution: 'graalvm'
+          cache: 'maven'
+
+      - name: Set version and build JAR
+        run: |
+          ./mvnw versions:set -DnewVersion=${{ steps.version.outputs.version }} -DgenerateBackupPoms=false
+          ./mvnw package -DskipTests -Dquarkus.package.jar.type=uber-jar
+          mv target/*-runner.jar target/mcp-cncf-tech-advisor.jar
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          cp target/mcp-cncf-tech-advisor.jar release/
+          cp artifacts/mcp-cncf-tech-advisor-macos-arm64/mcp-cncf-tech-advisor-macos-arm64 release/
+          cp artifacts/mcp-cncf-tech-advisor-macos-x64/mcp-cncf-tech-advisor-macos-x64 release/
+          cp artifacts/mcp-cncf-tech-advisor-linux-x64/mcp-cncf-tech-advisor-linux-x64 release/
+          cp artifacts/mcp-cncf-tech-advisor-windows-x64.exe/mcp-cncf-tech-advisor-windows-x64.exe release/
+          chmod +x release/mcp-cncf-tech-advisor-*
+          ls -la release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/mcp-cncf-tech-advisor.jar
+            release/mcp-cncf-tech-advisor-macos-arm64
+            release/mcp-cncf-tech-advisor-macos-x64
+            release/mcp-cncf-tech-advisor-linux-x64
+            release/mcp-cncf-tech-advisor-windows-x64.exe
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            ### Via npm (recommended) - No Java required!
+            ```bash
+            npx mcp-cncf-tech-advisor@${{ steps.version.outputs.version }}
+            ```
+
+            ### Via Docker
+            ```bash
+            docker run -i --rm ghcr.io/${{ github.repository }}:${{ steps.version.outputs.version }}
+            ```
+
+            ### Native binaries (no Java required)
+            - **macOS ARM64**: `mcp-cncf-tech-advisor-macos-arm64`
+            - **macOS x64**: `mcp-cncf-tech-advisor-macos-x64`
+            - **Linux x64**: `mcp-cncf-tech-advisor-linux-x64`
+            - **Windows x64**: `mcp-cncf-tech-advisor-windows-x64.exe`
+
+            ### Via JAR (requires Java 25+)
+            ```bash
+            java -jar mcp-cncf-tech-advisor.jar
+            ```
+
+            ## CNCF Tech Advisor MCP Server v${{ steps.version.outputs.version }}
+
+            Access 2,398+ CNCF projects with O(1) search, GitHub metrics, maturity status, and real-world case studies.
+
+            ✨ **Features**:
+            - **O(1) Search**: Ultra-fast indexing of 2,398+ CNCF projects
+            - **Live Data**: Automatic updates from CNCF Landscape API
+            - **8 MCP Tools**: Complete project analysis toolkit
+            - **No Java Dependencies**: Native binaries for production
+            - **Multi-platform**: macOS (ARM64/x64), Linux (x64), Windows (x64)
+
+            🔧 **MCP Tools**:
+            - `searchProjects` - Search CNCF projects
+            - `getProjectDetails` - Get project information
+            - `getProjectMetrics` - GitHub metrics and statistics
+            - `getProjectMaturity` - CNCF maturity status
+            - `getProjectsByCategory` - List by category
+            - `searchCaseStudies` - Search case studies
+            - `getCaseStudiesByProject` - Cases by project
+            - `getAllCaseStudies` - All case studies
+
+            🚀 **Quick Start**:
+            ```json
+            {
+              "mcpServers": {
+                "cncf-tech-advisor": {
+                  "command": "npx",
+                  "args": ["-y", "mcp-cncf-tech-advisor@${{ steps.version.outputs.version }}"]
+                }
+              }
+            }
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ===========================================
+  # Build and Push Docker Image
+  # ===========================================
+  docker:
+    name: Publish Docker Image
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ===========================================
+  # Publish to npm (5 packages: 1 main + 4 platform-specific)
+  # ===========================================
+  npm:
+    name: Publish to npm
+    needs: [release, build-native]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create platform packages and copy binaries
+        run: |
+          VERSION=${{ needs.release.outputs.version }}
+
+          # Platform configurations: npm_name, artifact_name, os, cpu
+          declare -a PLATFORMS=(
+            "mcp-cncf-tech-advisor-darwin-arm64:mcp-cncf-tech-advisor-macos-arm64:darwin:arm64"
+            "mcp-cncf-tech-advisor-darwin-x64:mcp-cncf-tech-advisor-macos-x64:darwin:x64"
+            "mcp-cncf-tech-advisor-linux-x64:mcp-cncf-tech-advisor-linux-x64:linux:x64"
+            "mcp-cncf-tech-advisor-windows-x64:mcp-cncf-tech-advisor-windows-x64.exe:win32:x64"
+          )
+
+          for PLATFORM in "${PLATFORMS[@]}"; do
+            IFS=':' read -r NPM_NAME ARTIFACT_NAME OS CPU <<< "$PLATFORM"
+
+            echo "Creating package: $NPM_NAME"
+            mkdir -p npm/$NPM_NAME/bin
+
+            # Copy binary
+            if [[ "$OS" == "win32" ]]; then
+              cp artifacts/$ARTIFACT_NAME/$ARTIFACT_NAME npm/$NPM_NAME/bin/$NPM_NAME.exe
+            else
+              cp artifacts/$ARTIFACT_NAME/$ARTIFACT_NAME npm/$NPM_NAME/bin/$NPM_NAME
+              chmod +x npm/$NPM_NAME/bin/$NPM_NAME
+            fi
+
+            # Generate package.json for platform package
+            cat > npm/$NPM_NAME/package.json << EOF
+          {
+            "name": "$NPM_NAME",
+            "version": "$VERSION",
+            "description": "MCP Server for CNCF Landscape Technology Data - $OS $CPU binary",
+            "repository": {
+              "type": "git",
+              "url": "https://github.com/jeanlopezxyz/cncf-tech-advisor-mcp"
+            },
+            "os": ["$OS"],
+            "cpu": ["$CPU"],
+            "author": "Jean Lopez",
+            "license": "Apache-2.0"
+          }
+          EOF
+          done
+
+      - name: Create main package
+        run: |
+          VERSION=${{ needs.release.outputs.version }}
+
+          # Create bin directory and copy wrapper script
+          mkdir -p npm/mcp-cncf-tech-advisor/bin
+          cp bin/index.js npm/mcp-cncf-tech-advisor/bin/index.js
+
+          # Generate package.json for main package with optionalDependencies
+          cat > npm/mcp-cncf-tech-advisor/package.json << EOF
+          {
+            "name": "mcp-cncf-tech-advisor",
+            "version": "$VERSION",
+            "description": "MCP Server for CNCF Landscape Technology Data. Access 2,398+ CNCF projects, GitHub metrics, maturity status, and case studies for technology decision support.",
+            "main": "./bin/index.js",
+            "bin": {
+              "mcp-cncf-tech-advisor": "./bin/index.js"
+            },
+            "files": [
+              "bin",
+              "README.md"
+            ],
+            "optionalDependencies": {
+              "mcp-cncf-tech-advisor-darwin-arm64": "$VERSION",
+              "mcp-cncf-tech-advisor-darwin-x64": "$VERSION",
+              "mcp-cncf-tech-advisor-linux-x64": "$VERSION",
+              "mcp-cncf-tech-advisor-windows-x64": "$VERSION"
+            },
+            "keywords": [
+              "mcp",
+              "mcp-server",
+              "cncf",
+              "kubernetes",
+              "cloud-native",
+              "landscape",
+              "technology-advisor",
+              "devops",
+              "observability",
+              "oss"
+            ],
+            "repository": {
+              "type": "git",
+              "url": "https://github.com/jeanlopezxyz/cncf-tech-advisor-mcp"
+            },
+            "author": "Jean Lopez",
+            "license": "Apache-2.0",
+            "engines": {
+              "node": ">=16"
+            },
+            "homepage": "https://github.com/jeanlopezxyz/cncf-tech-advisor-mcp#readme"
+          }
+          EOF
+
+          # Copy LICENSE to main package
+          cp LICENSE npm/mcp-cncf-tech-advisor/ || echo "No LICENSE file found"
+
+      - name: Publish platform packages
+        run: |
+          for PKG in mcp-cncf-tech-advisor-darwin-arm64 mcp-cncf-tech-advisor-darwin-x64 mcp-cncf-tech-advisor-linux-x64 mcp-cncf-tech-advisor-windows-x64; do
+            echo "Publishing $PKG..."
+            cd npm/$PKG
+            npm publish --access public
+            cd ../..
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish main package
+        run: |
+          cd npm/mcp-cncf-tech-advisor
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

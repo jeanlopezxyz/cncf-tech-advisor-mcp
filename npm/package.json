@@ -1,0 +1,47 @@
+{
+  "name": "cncf-tech-advisor-mcp",
+  "version": "1.0.0",
+  "description": "CNCF Tech Advisor MCP Server - Get intelligent recommendations for cloud-native technologies, compare options, and analyze adoption patterns",
+  "main": "cli.js",
+  "bin": {
+    "cncf-tech-advisor": "./cli.js"
+  },
+  "scripts": {
+    "start": "node cli.js"
+  },
+  "keywords": [
+    "mcp",
+    "cncf",
+    "cloud-native",
+    "kubernetes",
+    "technology-advisor",
+    "devops",
+    "microservices",
+    "observability",
+    "service-mesh",
+    "serverless",
+    "ci-cd",
+    "technology-recommendations",
+    "trends",
+    "adoption-patterns",
+    "claude",
+    "ai"
+  ],
+  "author": "Jean Lopez",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeanlopezxyz/cncf-tech-advisor-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/jeanlopezxyz/cncf-tech-advisor-mcp/issues"
+  },
+  "homepage": "https://github.com/jeanlopezxyz/cncf-tech-advisor-mcp#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "cli.js",
+    "README.md"
+  ]
+}

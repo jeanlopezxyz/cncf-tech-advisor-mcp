@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cncf-tech-advisor": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "cncf-tech-advisor@latest"
+      ]
+    }
+  }
+}

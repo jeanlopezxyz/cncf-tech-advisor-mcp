@@ -1,0 +1,76 @@
+# =============================================================================
+# Dockerignore - Files to exclude from Docker context
+# =============================================================================
+
+# Git and Version Control
+.git
+.gitignore
+.gitattributes
+
+# Maven build artifacts (will be built in container)
+target/
+.mvn/
+mvnw*
+!mvnw
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS and System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temporary files
+*.log
+*.tmp
+temp/
+logs/
+
+# Node.js (for npm packaging only)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Documentation (will be copied separately)
+*.md
+!README.md
+
+# Scripts and configuration (will be copied selectively)
+scripts/
+!docker/scripts/
+Makefile
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+circle.yml
+
+# Local development files
+.env.local
+.env.development
+.env.test
+
+# Cache directories
+.cache/
+*.cache
+
+# Backup files
+*.bak
+*.backup
+
+# Archive files
+*.zip
+*.tar.gz
+*.rar
+
+# Test files
+*.test
+tests/
+test-results/

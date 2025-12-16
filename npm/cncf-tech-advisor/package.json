@@ -1,0 +1,26 @@
+{
+  "name": "cncf-tech-advisor",
+  "version": "1.0.0",
+  "description": "MCP Server for CNCF Landscape Technology Data - Access 2,398+ CNCF projects, GitHub metrics, maturity status, and case studies for technology decision support.",
+  "main": "./bin/index.js",
+  "bin": {
+    "cncf-tech-advisor": "./bin/index.js"
+  },
+  "keywords": [
+    "mcp",
+    "cncf",
+    "kubernetes",
+    "cloud-native",
+    "landscape",
+    "technology-advisor",
+    "claude",
+    "ai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeanlopezxyz/cncf-tech-advisor-mcp"
+  },
+  "author": "Jean Lopez",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/jeanlopezxyz/cncf-tech-advisor-mcp#readme"
+}

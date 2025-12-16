@@ -1,0 +1,333 @@
+# =============================================================================
+# CNCF Tech Advisor MCP Server - CI/CD Pipeline
+# =============================================================================
+# This workflow builds and deploys the CNCF Tech Advisor MCP server
+# with multi-platform support (Linux, macOS, Windows) and both
+# JVM and native image builds.
+
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  release:
+    types: [ published ]
+
+env:
+  JAVA_VERSION: '25'
+  MAVEN_OPTS: "-Xmx2g"
+
+jobs:
+  # =============================================================================
+  # Test Job - Run tests on multiple platforms
+  # =============================================================================
+  test:
+    name: Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        java-version: [21, 25]
+        include:
+          - os: ubuntu-latest
+            java-version: 17
+          - os: ubuntu-latest
+            java-version: 21
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      - name: Run tests
+        run: ./mvnw verify
+
+      - name: Generate test report
+        if: matrix.java-version == '25' && matrix.os == 'ubuntu-latest'
+        uses: dorny/test-reporter@v1
+        if: success() || failure()
+        with:
+          name: Maven Tests
+          path: target/surefire-reports/*.xml
+          reporter: java-junit
+
+  # =============================================================================
+  # Build Job - Build JAR and Docker images
+  # =============================================================================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      image-tag: ${{ steps.meta.outputs.tags }}
+      jar-name: ${{ steps.jar.outputs.filename }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: 25
+          distribution: 'temurin'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      - name: Get version
+        id: version
+        run: echo "version=$(mvn help:evaluate -Dexpression=project.version -q -DforceStdout)" >> $GITHUB_OUTPUT
+
+      - name: Build JAR
+        run: ./mvnw package -DskipTests
+
+      - name: Get JAR filename
+        id: jar
+        run: |
+          JAR_FILE=$(find target -name "*-runner.jar" | head -1)
+          echo "filename=$(basename $JAR_FILE)" >> $GITHUB_OUTPUT
+          echo "JAR file: $JAR_FILE"
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/jeanlopezxyz/cncf-tech-advisor-mcp
+            cncf-tech-advisor
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=CNCF Tech Advisor MCP Server
+            org.opencontainers.image.description=Intelligent CNCF technology recommendations and analysis
+            org.opencontainers.image.vendor=Jean Lopez
+            org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.version=${{ steps.version.outputs.version }}
+
+      - name: Build and push development image
+        if: github.ref == 'refs/heads/develop'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          target: jvm-runtime
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/jeanlopezxyz/cncf-tech-advisor-mcp:dev
+            cncf-tech-advisor:dev
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jar-${{ steps.version.outputs.version }}
+          path: target/quarkus-app/
+
+      - name: Upload NPM package files
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package-${{ steps.version.outputs.version }}
+          path: |
+            bin/
+            package.json
+            README.md
+            LICENSE
+
+  # =============================================================================
+  # NPM Publish Job - Publish to npm registry
+  # =============================================================================
+  npm-publish:
+    name: NPM Publish
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'release'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download NPM package files
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package-${{ needs.build.outputs.version }}
+
+      - name: Publish to NPM
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # =============================================================================
+  # Security Scan Job
+  # =============================================================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'cncf-tech-advisor'
+          path: '.'
+          format: 'HTML'
+
+      - name: Upload OWASP results
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: reports/
+
+  # =============================================================================
+  # Integration Test Job
+  # =============================================================================
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      cncf-tech-advisor:
+        image: ghcr.io/jeanlopezxyz/cncf-tech-advisor-mcp:${{ needs.build.outputs.version }}
+        ports:
+          - 8080:8080
+        env:
+          QUARKUS_MCP_SERVER_STDIO_ENABLED: "false"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Wait for server to be ready
+        run: |
+          echo "Waiting for MCP server to start..."
+          for i in {1..30}; do
+            if curl -f http://localhost:8080/q/health >/dev/null 2>&1; then
+              echo "Server is ready!"
+              break
+            fi
+            echo "Attempt $i/30: Server not ready..."
+            sleep 2
+          done
+
+      - name: Run MCP integration tests
+        run: |
+          chmod +x docker/scripts/mcp-test.sh
+          docker/scripts/mcp-test.sh
+
+  # =============================================================================
+  # Native Build Job (Optional - Experimental)
+  # =============================================================================
+  native-build:
+    name: Native Build (Experimental)
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: 25
+          distribution: 'temurin'
+
+      - name: Cache Maven dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+
+      - name: Build native executable
+        run: |
+          echo "Building native executable (this may take several minutes)..."
+          ./mvnw package -DskipTests -Dnative
+        timeout-minutes: 30
+
+      - name: Upload native artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-executable
+          path: target/*-runner

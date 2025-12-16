@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "cncf-tech-advisor": {
+      "command": "cncf-tech-advisor",
+      "args": []
+    }
+  }
+}
