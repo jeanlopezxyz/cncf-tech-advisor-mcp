@@ -9,9 +9,7 @@
 
 # Maven build artifacts (will be built in container)
 target/
-.mvn/
-mvnw*
-!mvnw
+.mvn/wrapper/
 
 # IDE and Editor files
 .idea/

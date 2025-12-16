@@ -298,7 +298,55 @@ jobs:
 
           # Create bin directory and copy wrapper script
           mkdir -p npm/mcp-cncf-tech-advisor/bin
-          cp bin/index.js npm/mcp-cncf-tech-advisor/bin/index.js
+          cat > npm/mcp-cncf-tech-advisor/bin/index.js << 'EOF'
+#!/usr/bin/env node
+
+const childProcess = require('child_process');
+
+const BINARY_MAP = {
+  darwin_arm64: {name: 'mcp-cncf-tech-advisor-darwin-arm64', suffix: ''},
+  darwin_x64: {name: 'mcp-cncf-tech-advisor-darwin-x64', suffix: ''},
+  linux_x64: {name: 'mcp-cncf-tech-advisor-linux-x64', suffix: ''},
+  win32_x64: {name: 'mcp-cncf-tech-advisor-windows-x64', suffix: '.exe'},
+};
+
+// Resolving will fail if the optionalDependency was not installed or the platform/arch is not supported
+const resolveBinaryPath = () => {
+  try {
+    const binary = BINARY_MAP[`${process.platform}_${process.arch}`];
+    if (!binary) {
+      throw new Error(`Unsupported platform: ${process.platform}/${process.arch}`);
+    }
+    return require.resolve(`${binary.name}/bin/${binary.name}${binary.suffix}`);
+  } catch (e) {
+    throw new Error(`Could not resolve binary path for platform/arch: ${process.platform}/${process.arch}. Please ensure you have the correct platform package installed.`);
+  }
+};
+
+const child = childProcess.spawn(resolveBinaryPath(), process.argv.slice(2), {
+  stdio: 'inherit',
+  env: process.env,
+});
+
+const handleSignal = (signal) => {
+  if (child && !child.killed) {
+    child.kill(signal);
+  }
+};
+
+['SIGTERM', 'SIGINT', 'SIGHUP'].forEach((signal) => {
+  process.on(signal, () => handleSignal(signal));
+});
+
+child.on('close', (code, signal) => {
+  if (signal) {
+    process.exit(128 + (signal === 'SIGTERM' ? 15 : signal === 'SIGINT' ? 2 : 1));
+  } else {
+    process.exit(code || 0);
+  }
+});
+EOF
+          chmod +x npm/mcp-cncf-tech-advisor/bin/index.js
 
           # Generate package.json for main package with optionalDependencies
           cat > npm/mcp-cncf-tech-advisor/package.json << EOF
