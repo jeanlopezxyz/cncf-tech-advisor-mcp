@@ -50,7 +50,8 @@ jobs:
           - os: ubuntu-latest
             artifact: mcp-cncf-tech-advisor-linux-x64
           - os: windows-latest
-            artifact: mcp-cncf-tech-advisor-windows-x64.exe
+            artifact: mcp-cncf-tech-advisor-windows-x64
+            artifact_suffix: .exe
     steps:
       - uses: actions/checkout@v4
 
@@ -75,7 +76,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: target/${{ matrix.artifact }}
+          path: target/${{ matrix.artifact }}${{ matrix.artifact_suffix }}
 
   # ===========================================
   # Create GitHub Release
@@ -119,7 +120,7 @@ jobs:
           cp artifacts/mcp-cncf-tech-advisor-macos-arm64/mcp-cncf-tech-advisor-macos-arm64 release/
           cp artifacts/mcp-cncf-tech-advisor-macos-x64/mcp-cncf-tech-advisor-macos-x64 release/
           cp artifacts/mcp-cncf-tech-advisor-linux-x64/mcp-cncf-tech-advisor-linux-x64 release/
-          cp artifacts/mcp-cncf-tech-advisor-windows-x64.exe/mcp-cncf-tech-advisor-windows-x64.exe release/
+          cp artifacts/mcp-cncf-tech-advisor-windows-x64/mcp-cncf-tech-advisor-windows-x64 release/
           chmod +x release/mcp-cncf-tech-advisor-*
           ls -la release/
 
@@ -131,7 +132,7 @@ jobs:
             release/mcp-cncf-tech-advisor-macos-arm64
             release/mcp-cncf-tech-advisor-macos-x64
             release/mcp-cncf-tech-advisor-linux-x64
-            release/mcp-cncf-tech-advisor-windows-x64.exe
+            release/mcp-cncf-tech-advisor-windows-x64
           generate_release_notes: true
           body: |
             ## Installation
@@ -150,7 +151,7 @@ jobs:
             - **macOS ARM64**: `mcp-cncf-tech-advisor-macos-arm64`
             - **macOS x64**: `mcp-cncf-tech-advisor-macos-x64`
             - **Linux x64**: `mcp-cncf-tech-advisor-linux-x64`
-            - **Windows x64**: `mcp-cncf-tech-advisor-windows-x64.exe`
+            - **Windows x64**: `mcp-cncf-tech-advisor-windows-x64`
 
             ### Via JAR (requires Java 25+)
             ```bash
@@ -261,7 +262,7 @@ jobs:
             "mcp-cncf-tech-advisor-darwin-arm64:mcp-cncf-tech-advisor-macos-arm64:darwin:arm64"
             "mcp-cncf-tech-advisor-darwin-x64:mcp-cncf-tech-advisor-macos-x64:darwin:x64"
             "mcp-cncf-tech-advisor-linux-x64:mcp-cncf-tech-advisor-linux-x64:linux:x64"
-            "mcp-cncf-tech-advisor-windows-x64:mcp-cncf-tech-advisor-windows-x64.exe:win32:x64"
+            "mcp-cncf-tech-advisor-windows-x64:mcp-cncf-tech-advisor-windows-x64:win32:x64"
           )
 
           for PLATFORM in "${PLATFORMS[@]}"; do
@@ -273,6 +274,7 @@ jobs:
             # Copy binary
             if [[ "$OS" == "win32" ]]; then
               cp artifacts/$ARTIFACT_NAME/$ARTIFACT_NAME npm/$NPM_NAME/bin/$NPM_NAME.exe
+              chmod +x npm/$NPM_NAME/bin/$NPM_NAME.exe
             else
               cp artifacts/$ARTIFACT_NAME/$ARTIFACT_NAME npm/$NPM_NAME/bin/$NPM_NAME
               chmod +x npm/$NPM_NAME/bin/$NPM_NAME
